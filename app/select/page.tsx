@@ -1,153 +1,158 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { ArrowRight, ChevronRight } from "lucide-react"
+import { useEffect, useState } from "react"
+import { useAssessment } from "@/lib/assessment-context"
 
-const SUBJECTS = {
-  "Computer Science": [
-    "Data Structures & Algorithms",
-    "Object-Oriented Programming",
-    "Web Development (Frontend)",
-    "Web Development (Backend)",
-    "Machine Learning Basics",
-    "Database Design",
-    "Cloud Computing Fundamentals",
-  ],
-  Mathematics: [
-    "Algebra",
-    "Geometry",
-    "Calculus I",
-    "Calculus II",
-    "Linear Algebra",
-    "Probability & Statistics",
-    "Discrete Mathematics",
-  ],
-  Physics: ["Mechanics", "Thermodynamics", "Electromagnetism", "Optics", "Modern Physics", "Quantum Mechanics Basics"],
-  Chemistry: [
-    "General Chemistry",
-    "Organic Chemistry",
-    "Inorganic Chemistry",
-    "Physical Chemistry",
-    "Biochemistry Basics",
-  ],
-  Biology: ["Cell Biology", "Genetics", "Molecular Biology", "Ecology", "Evolution"],
-  Languages: ["English Writing", "Spanish Fundamentals", "French Conversation", "Grammar & Syntax"],
+type Question = {
+  question_id: string
+  question: string
+  difficulty: string
+  options: { key: string; text: string }[]
 }
 
 export default function SelectPage() {
-  const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null)
+  const { sessionId } = useAssessment()
 
-  const topicsForSubject = selectedSubject ? SUBJECTS[selectedSubject as keyof typeof SUBJECTS] : []
+  const [question, setQuestion] = useState<Question | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleStartAssessment = () => {
-    if (selectedSubject && selectedTopic) {
-      // Next: navigate to assessment page and pass the selection
-      window.location.href = `/assess?subject=${encodeURIComponent(selectedSubject)}&topic=${encodeURIComponent(selectedTopic)}`
+  const [selectedOption, setSelectedOption] = useState<string>("")
+  const [explanation, setExplanation] = useState("")
+  const [confidence, setConfidence] = useState(50)
+
+  const [submitted, setSubmitted] = useState(false)
+  const [result, setResult] = useState<any>(null)
+
+  // Fetch question
+  useEffect(() => {
+    if (!sessionId) return
+
+    const fetchQuestion = async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(
+          `http://127.0.0.1:5000/api/assessment/question/${sessionId}`
+        )
+        const data = await res.json()
+        setQuestion(data)
+      } catch (err) {
+        setError("Failed to load question")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchQuestion()
+  }, [sessionId])
+
+  // Submit answer
+  const submitAnswer = async () => {
+    if (!question || !sessionId) return
+
+    const payload = {
+      session_id: sessionId,
+      question_id: question.question_id,
+      selected_option: selectedOption,
+      explanation,
+      self_confidence: confidence,
+    }
+
+    try {
+      const res = await fetch(
+        "http://127.0.0.1:5000/api/assessment/answer",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      )
+
+      const data = await res.json()
+      setResult(data)
+      setSubmitted(true)
+    } catch (err) {
+      console.error(err)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
-      {/* Header */}
-      <header className="border-b border-border/40 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
-          <Link href="/" className="text-foreground hover:opacity-70 transition-opacity">
-            ← Back to Home
-          </Link>
-          <h1 className="text-xl font-semibold text-foreground">Select Your Topic</h1>
-          <div className="w-24" /> {/* Spacer for alignment */}
-        </div>
-      </header>
+    <div className="min-h-screen p-10 space-y-6">
+      <h1 className="text-2xl font-bold">Select Your Topic</h1>
 
-      {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 py-16">
-        <div className="mb-12">
-          <h2 className="text-3xl font-bold text-foreground mb-2">What would you like to assess?</h2>
-          <p className="text-muted-foreground">
-            Choose a subject and topic. We'll ask you questions tailored to that area.
+      <div className="p-4 bg-green-100 border border-green-300 rounded">
+        <p className="font-semibold">Session Connected</p>
+        <p className="text-sm break-all">{sessionId}</p>
+      </div>
+
+      {loading && <p>Loading question…</p>}
+      {error && <p className="text-red-600">{error}</p>}
+
+      {question && !submitted && (
+        <div className="p-6 border rounded space-y-4 bg-white">
+          <p className="text-sm text-muted-foreground">
+            Difficulty: {question.difficulty}
           </p>
+
+          <h2 className="text-lg font-semibold">{question.question}</h2>
+
+          {/* Multiple Choice */}
+          <div className="space-y-2">
+            {question.options.map((opt) => (
+              <label key={opt.key} className="block">
+                <input
+                  type="radio"
+                  name="option"
+                  value={opt.key}
+                  checked={selectedOption === opt.key}
+                  onChange={() => setSelectedOption(opt.key)}
+                  className="mr-2"
+                />
+                {opt.text}
+              </label>
+            ))}
+          </div>
+
+          {/* Explanation */}
+          <textarea
+            className="w-full border rounded p-2"
+            placeholder="Explain your reasoning..."
+            value={explanation}
+            onChange={(e) => setExplanation(e.target.value)}
+          />
+
+          {/* Confidence Slider */}
+          <div>
+            <label className="block font-medium">
+              How confident are you? ({confidence}%)
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={confidence}
+              onChange={(e) => setConfidence(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+
+          <button
+            onClick={submitAnswer}
+            className="px-4 py-2 bg-blue-600 text-white rounded"
+          >
+            Submit Answer
+          </button>
         </div>
+      )}
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Left: Subject Selection */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Step 1: Choose a Subject</h3>
-            <div className="space-y-2">
-              {Object.keys(SUBJECTS).map((subject) => (
-                <button
-                  key={subject}
-                  onClick={() => {
-                    setSelectedSubject(subject)
-                    setSelectedTopic(null)
-                  }}
-                  className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                    selectedSubject === subject
-                      ? "border-primary bg-primary/5"
-                      : "border-border/40 bg-card hover:border-primary/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground">{subject}</span>
-                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Right: Topic Selection */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Step 2: Choose a Topic</h3>
-            {selectedSubject ? (
-              <div className="space-y-2">
-                {topicsForSubject.map((topic) => (
-                  <button
-                    key={topic}
-                    onClick={() => setSelectedTopic(topic)}
-                    className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                      selectedTopic === topic
-                        ? "border-primary bg-primary/5"
-                        : "border-border/40 bg-card hover:border-primary/40"
-                    }`}
-                  >
-                    <span className="font-medium text-foreground">{topic}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="p-8 rounded-lg bg-muted/30 border border-border/40 text-center">
-                <p className="text-muted-foreground">Select a subject first to see available topics</p>
-              </div>
-            )}
-          </div>
+      {submitted && result && (
+        <div className="p-6 bg-gray-100 border rounded space-y-2">
+          <h3 className="font-bold text-lg">Confidence Analysis</h3>
+          <p>Confidence Score: {result.confidence_score}%</p>
+          <p>Reasoning Quality: {result.reasoning_quality}</p>
+          <p>{result.feedback}</p>
         </div>
-
-        {/* Selection Summary & CTA */}
-        {selectedSubject && selectedTopic && (
-          <div className="mt-12 p-8 rounded-xl bg-primary/5 border border-primary/20 space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">Ready to Start</h3>
-              <p className="text-muted-foreground">
-                You're about to assess your confidence in{" "}
-                <span className="font-semibold text-foreground">{selectedTopic}</span> under{" "}
-                <span className="font-semibold text-foreground">{selectedSubject}</span>.
-              </p>
-            </div>
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                You'll answer 5–8 questions at your own pace. There are no right or wrong answers—we're measuring your
-                confidence, not your score. Take your time explaining your thinking.
-              </p>
-              <Button onClick={handleStartAssessment} size="lg" className="gap-2 w-full sm:w-auto">
-                Start Assessment <ArrowRight className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-        )}
-      </main>
+      )}
     </div>
   )
 }

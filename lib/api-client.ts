@@ -1,40 +1,24 @@
-// API client for communicating with backend endpoints
-export const apiClient = {
-  async generateQuestion(params: {
-    subject: string
-    topic: string
-    difficulty: string
-    previousAnswers: any[]
-    userConfidence: number
-  }) {
-    const response = await fetch("/api/assessment/generate-question", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-    })
-    return response.json()
-  },
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL
 
-  async evaluateAssessment(params: { answers: any[]; subject: string; topic: string }) {
-    const response = await fetch("/api/assessment/evaluate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-    })
-    return response.json()
-  },
+export async function startAssessment(subject: string, topic: string) {
+  if (!BACKEND_URL) {
+    throw new Error("Backend URL is not defined")
+  }
 
-  async saveAssessment(params: { userId: string; subject: string; topic: string; answers: any[]; results: any }) {
-    const response = await fetch("/api/assessment/save", {
+  const response = await fetch(
+    `${BACKEND_URL}/api/assessment/start`,
+    {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-    })
-    return response.json()
-  },
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ subject, topic }),
+    }
+  )
 
-  async getAssessments(userId: string) {
-    const response = await fetch(`/api/dashboard/get-assessments?userId=${userId}`)
-    return response.json()
-  },
+  if (!response.ok) {
+    throw new Error("Failed to start assessment")
+  }
+
+  return response.json()
 }
